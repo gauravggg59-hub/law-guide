@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Legal Advisor India</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- PyScript -->
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css" />
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+
+    <!-- API and JS Helpers -->
+    <script>
+        // Explicitly attach to window to ensure PyScript can access it
+        window.apiKey = ""; 
+
+        // Helper function to handle API calls from Python
+        // This avoids complex object conversion issues (Proxy vs Object) between Pyodide and JS Fetch API
+        window.fetchGemini = async (key, bodyString) => {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`;
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: bodyString
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (e) {
+                console.error("Gemini API Error:", e);
+                // Return null to signal error to Python
+                return null;
+            }
+        };
+    </script>
+
+    <style>
+        /* Custom Scrollbar for a cleaner look */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+        
+        /* Loading dots animation */
+        .dot-flashing {
+            position: relative;
+            width: 8px;
+            height: 8px;
+            border-radius: 5px;
+            background-color: #94a3b8;
+            color: #94a3b8;
+            animation: dot-flashing 1s infinite linear alternate;
+            animation-delay: 0.5s;
+        }
+        .dot-flashing::before, .dot-flashing::after {
+            content: "";
+            display: inline-block;
+            position: absolute;
+            top: 0;
+        }
+        .dot-flashing::before {
+            left: -12px;
+            width: 8px;
+            height: 8px;
+            border-radius: 5px;
+            background-color: #94a3b8;
+            color: #94a3b8;
+            animation: dot-flashing 1s infinite alternate;
+            animation-delay: 0s;
+        }
+        .dot-flashing::after {
+            left: 12px;
+            width: 8px;
+            height: 8px;
+            border-radius: 5px;
+            background-color: #94a3b8;
+            color: #94a3b8;
+            animation: dot-flashing 1s infinite alternate;
+            animation-delay: 1s;
+        }
+        @keyframes dot-flashing {
+            0% { background-color: #94a3b8; }
+            50%, 100% { background-color: #e2e8f0; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-900 h-screen overflow-hidden flex">
+
+    <!-- Disclaimer Modal -->
+    <div id="disclaimer-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 border-t-4 border-amber-500">
+            <div class="flex items-center gap-3 mb-4 text-amber-600">
+                <i data-lucide="shield-alert" class="w-8 h-8"></i>
+                <h2 class="text-xl font-bold uppercase tracking-wide">Important Disclaimer</h2>
+            </div>
+            <p class="text-slate-600 mb-4 leading-relaxed">
+                This application uses Python & AI to provide general legal information based on <strong>Indian Law</strong>. 
+                <br /><br />
+                <strong class="text-slate-900">It is NOT a substitute for a professional Advocate.</strong>
+                <br /><br />
+                The AI may hallucinate or provide outdated information. Never make critical life, financial, or legal decisions based solely on this chatbot. Always consult a qualified Advocate in your city/state.
+            </p>
+            <button id="btn-agree" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md transition-colors flex items-center justify-center gap-2">
+                I Understand & Agree <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div id="sidebar" class="-translate-x-full md:translate-x-0 fixed md:relative z-20 w-72 h-full bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 shadow-xl md:shadow-none">
+        <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white">
+                <i data-lucide="scale" class="text-amber-400 w-7 h-7"></i>
+                <span class="font-serif text-xl font-bold tracking-tight">VidhiMitra India</span>
+            </div>
+            <button id="btn-close-sidebar" class="md:hidden text-slate-400 hover:text-white">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+            <div>
+                <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Common Topics</h3>
+                <ul class="space-y-2 text-sm" id="topic-list">
+                    <!-- Topics injected via Python or hardcoded -->
+                    <li><button class="topic-btn flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition-colors text-left" data-topic="RTI Application"><i data-lucide="book-open" class="w-4 h-4 text-slate-500"></i> RTI Application</button></li>
+                    <li><button class="topic-btn flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition-colors text-left" data-topic="Consumer Court"><i data-lucide="book-open" class="w-4 h-4 text-slate-500"></i> Consumer Court</button></li>
+                    <li><button class="topic-btn flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition-colors text-left" data-topic="Cyber Crime India"><i data-lucide="book-open" class="w-4 h-4 text-slate-500"></i> Cyber Crime India</button></li>
+                    <li><button class="topic-btn flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition-colors text-left" data-topic="Property Disputes"><i data-lucide="book-open" class="w-4 h-4 text-slate-500"></i> Property Disputes</button></li>
+                    <li><button class="topic-btn flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition-colors text-left" data-topic="Labor Laws"><i data-lucide="book-open" class="w-4 h-4 text-slate-500"></i> Labor Laws</button></li>
+                </ul>
+            </div>
+
+            <div class="bg-slate-800/50 p-4 rounded-lg border border-slate-700/50">
+                <h4 class="text-amber-400 font-semibold mb-2 flex items-center gap-2 text-sm">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i> Beta Warning
+                </h4>
+                <p class="text-xs text-slate-400 leading-normal">
+                    Responses are generated by AI and may be inaccurate. Verify with the Official Gazette of India or an Advocate.
+                </p>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-slate-800 text-xs text-center text-slate-600">
+            © 2025 VidhiMitra India (PyScript)
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col h-full w-full relative">
+        <!-- Header -->
+        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shadow-sm z-10">
+            <div class="flex items-center gap-3">
+                <button id="btn-open-sidebar" class="md:hidden text-slate-600">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+                <div class="flex flex-col">
+                    <h1 class="font-bold text-slate-800 text-lg flex items-center gap-2">
+                        Legal Advisor India <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full uppercase font-bold tracking-wide">AI Preview</span>
+                    </h1>
+                    <span class="text-xs text-slate-500 hidden sm:block">Powered by Gemini 2.5 & Python</span>
+                </div>
+            </div>
+            <a href="#" class="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+                 Find an Advocate <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+            </a>
+        </header>
+
+        <!-- Chat Area -->
+        <div id="chat-container" class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth custom-scrollbar bg-slate-50">
+            <!-- Initial Message -->
+            <div class="flex items-start gap-4 max-w-4xl mx-auto">
+                <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <i data-lucide="gavel" class="w-5 h-5"></i>
+                </div>
+                <div class="flex flex-col max-w-[85%] md:max-w-[75%] items-start">
+                    <div class="px-5 py-4 rounded-2xl shadow-sm text-sm md:text-base bg-white text-slate-800 border border-slate-200 rounded-bl-none">
+                        <p class="mb-2 leading-relaxed text-slate-700">
+                            Namaste. I am your AI Legal Assistant specialized in Indian Law. I can help explain concepts under the Bharatiya Nyaya Sanhita (BNS), Consumer Protection Act, RTI, and various Indian State laws.<br><br>Please note: I am an AI running on Python, not an Advocate. My responses are for informational purposes only.
+                        </p>
+                    </div>
+                    <span class="text-[10px] text-slate-400 mt-1 px-1">VidhiMitra AI Assistant</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator (Hidden by default) -->
+        <div id="loading-indicator" class="hidden px-4 md:px-8 pb-2">
+             <div class="flex items-start gap-4 max-w-4xl mx-auto">
+                <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="gavel" class="w-5 h-5"></i>
+                </div>
+                <div class="bg-white px-5 py-4 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2">
+                    <div class="dot-flashing"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-4 bg-white border-t border-slate-200">
+            <div class="max-w-4xl mx-auto relative">
+                <textarea
+                    id="user-input"
+                    placeholder="Describe your legal situation or ask a question about Indian Law..."
+                    class="w-full pl-4 pr-14 py-4 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-[60px] max-h-[120px] shadow-inner text-slate-700 placeholder:text-slate-400"
+                    rows="1"
+                ></textarea>
+                <button 
+                    id="btn-send"
+                    class="absolute right-2 top-2 p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                    <i data-lucide="send" class="w-5 h-5 group-hover:translate-x-0.5 transition-transform"></i>
+                </button>
+            </div>
+            <p class="text-center text-[10px] text-slate-400 mt-2">
+                VidhiMitra (Python Version) can make mistakes. Check with the Bharatiya Nyaya Sanhita.
+            </p>
+        </div>
+    </div>
+
+    <!-- Python Script -->
+    <script type="py">
+        import json
+        from js import document, window, console
+        from pyodide.ffi import create_proxy
+        import asyncio
+
+        # --- Configuration ---
+        api_key = "AIzaSyDWZbpmmGPXoHUSiJ3mO2NFgRBiQw4jjrc"
+        
+        SYSTEM_PROMPT = """
+        You are VidhiMitra, an AI Legal Information Assistant specialized in INDIAN LAW. 
+        Your role is to provide clear, accurate, and professional legal information based on the Constitution of India, Bharatiya Nyaya Sanhita (BNS), Indian Penal Code (IPC), Contract Act, and specific State laws.
+        
+        CRITICAL GUIDELINES:
+        1. JURISDICTION: Focus STRICTLY on laws applicable in India. 
+        2. DISCLAIMER: You must NEVER claim to be an Advocate. You are an AI. 
+        3. NO ADVICE: Do not give specific legal advice. Outline options.
+        4. CITATIONS: Refer to specific Acts/Sections.
+        5. FORMATTING: Use Markdown-like bolding (**text**) and bullet points.
+        6. TONE: Formal, objective, empathetic.
+        """
+
+        # History starts with the system prompt context implicitly or we send it every time
+        # We will keep a local history of messages for context window
+        conversation_history = []
+
+        # --- UI Helpers ---
+        def get_el(id):
+            return document.getElementById(id)
+
+        def scroll_to_bottom():
+            container = get_el("chat-container")
+            container.scrollTop = container.scrollHeight
+
+        def format_text(text):
+            # Simple formatter for **bold** and newlines
+            # Escape HTML first to prevent injection (basic)
+            safe_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            
+            # Bold
+            parts = safe_text.split("**")
+            formatted = ""
+            for i, part in enumerate(parts):
+                if i % 2 == 1:
+                    formatted += f"<strong class='font-bold text-slate-800'>{part}</strong>"
+                else:
+                    formatted += part
+            
+            # Newlines to paragraphs
+            lines = formatted.split("\n")
+            final_html = ""
+            for line in lines:
+                if line.strip():
+                    final_html += f"<p class='mb-2 leading-relaxed text-slate-700'>{line}</p>"
+            
+            return final_html
+
+        def create_message_bubble(role, text):
+            container_div = document.createElement("div")
+            container_div.className = f"flex items-start gap-4 max-w-4xl mx-auto {'flex-row-reverse' if role == 'user' else ''}"
+            
+            # Icon
+            icon_div = document.createElement("div")
+            icon_div.className = f"w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm {'bg-slate-900 text-white' if role == 'ai' else 'bg-blue-600 text-white'}"
+            
+            # SVG content (simulating Lucide)
+            if role == 'ai':
+                icon_div.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13h2.5a2.5 2.5 0 1 0 0-5H14"></path><path d="M10 13H7.5a2.5 2.5 0 1 0 0-5H10"></path><path d="M14 13v8a2 2 0 1 1-4 0v-8"></path><path d="M14 5h-4"></path></svg>'
+            else:
+                icon_div.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>'
+            
+            # Text Content
+            content_wrapper = document.createElement("div")
+            content_wrapper.className = f"flex flex-col max-w-[85%] md:max-w-[75%] {'items-end' if role == 'user' else 'items-start'}"
+            
+            bubble = document.createElement("div")
+            bubble.className = f"px-5 py-4 rounded-2xl shadow-sm text-sm md:text-base {'bg-blue-600 text-white rounded-br-none' if role == 'user' else 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'}"
+            
+            if role == 'user':
+                bubble.innerText = text # User text is plain
+            else:
+                bubble.innerHTML = format_text(text) # AI text gets formatted
+            
+            label = document.createElement("span")
+            label.className = "text-[10px] text-slate-400 mt-1 px-1"
+            label.innerText = "You" if role == 'user' else "VidhiMitra AI Assistant"
+
+            content_wrapper.appendChild(bubble)
+            content_wrapper.appendChild(label)
+            
+            container_div.appendChild(icon_div)
+            container_div.appendChild(content_wrapper)
+            
+            return container_div
+
+        # --- Logic ---
+
+        async def generate_ai_response(user_text):
+            # Show loading
+            get_el("loading-indicator").classList.remove("hidden")
+            scroll_to_bottom()
+
+            try:
+                # Prepare payload
+                # We send the last few messages for context
+                contents = []
+                
+                # Add context (simplified for this demo: last 6 turns)
+                recent_history = conversation_history[-6:]
+                for msg in recent_history:
+                    role_str = "user" if msg['role'] == "user" else "model"
+                    contents.append({"role": role_str, "parts": [{"text": msg['text']}]})
+                
+                contents.append({"role": "user", "parts": [{"text": user_text}]})
+
+                payload = {
+                    "contents": contents,
+                    "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT }] }
+                }
+
+                # Serialize payload to JSON string in Python
+                payload_str = json.dumps(payload)
+
+                # Call JS Helper Function directly
+                # This returns a Promise, which await handles
+                data = await window.fetchGemini(api_key, payload_str)
+
+                if data is None:
+                    ai_text = "I apologize, but I am unable to connect to the server at this time."
+                else:
+                    # Access properties on the JS Object Proxy
+                    # data is a JS object, but we can access it like python object or via attributes
+                    # For safety with Pyodide Proxies, we check attributes
+                    if hasattr(data, 'candidates') and len(data.candidates) > 0:
+                        ai_text = data.candidates[0].content.parts[0].text
+                    else:
+                        ai_text = "I apologize, I could not generate a response. Please try again."
+
+            except Exception as e:
+                console.error(f"Python Logic Error: {e}")
+                ai_text = "I am having trouble processing your request."
+            
+            finally:
+                get_el("loading-indicator").classList.add("hidden")
+
+            # Add to history
+            conversation_history.append({"role": "ai", "text": ai_text})
+            
+            # Render
+            msg_el = create_message_bubble("ai", ai_text)
+            get_el("chat-container").appendChild(msg_el)
+            scroll_to_bottom()
+
+        async def handle_send(e=None):
+            inp = get_el("user-input")
+            text = inp.value.strip()
+            
+            if not text:
+                return
+
+            # Clear input
+            inp.value = ""
+
+            # Add User Message to UI
+            msg_el = create_message_bubble("user", text)
+            get_el("chat-container").appendChild(msg_el)
+            scroll_to_bottom()
+
+            # Add to history
+            conversation_history.append({"role": "user", "text": text})
+
+            # Call AI
+            await generate_ai_response(text)
+
+        # --- Event Listeners ---
+        
+        # Modal
+        def close_modal(e):
+            get_el("disclaimer-modal").classList.add("hidden")
+        
+        # Sidebar
+        def toggle_sidebar(e):
+            sb = get_el("sidebar")
+            # Tailwind class toggling for translate
+            if "-translate-x-full" in sb.className:
+                sb.classList.remove("-translate-x-full")
+            else:
+                sb.classList.add("-translate-x-full")
+
+        def on_topic_click(e):
+            # We need to find the button even if icon was clicked
+            target = e.target
+            # Bubble up to button
+            while target.tagName != "BUTTON":
+                target = target.parentElement
+            
+            topic = target.getAttribute("data-topic")
+            get_el("user-input").value = f"Tell me about {topic}"
+            
+            # Close sidebar on mobile
+            if window.innerWidth < 768:
+                get_el("sidebar").classList.add("-translate-x-full")
+            
+            # Optional: Auto send
+            # handle_send()
+
+        # Bind events
+        get_el("btn-agree").addEventListener("click", create_proxy(close_modal))
+        get_el("btn-send").addEventListener("click", create_proxy(handle_send))
+        get_el("btn-open-sidebar").addEventListener("click", create_proxy(toggle_sidebar))
+        get_el("btn-close-sidebar").addEventListener("click", create_proxy(toggle_sidebar))
+        
+        # Topic buttons
+        topics = document.querySelectorAll(".topic-btn")
+        for btn in topics:
+            btn.addEventListener("click", create_proxy(on_topic_click))
+
+        # Enter key on textarea
+        def check_enter(e):
+            if e.key == "Enter" and not e.shiftKey:
+                e.preventDefault()
+                asyncio.ensure_future(handle_send(None))
+
+        get_el("user-input").addEventListener("keydown", create_proxy(check_enter))
+
+        # Initialize icons
+        window.lucide.createIcons()
+
+        # Add initial greeting to history
+        conversation_history.append({
+            "role": "ai", 
+            "text": "Namaste. I am your AI Legal Assistant specialized in Indian Law. I can help explain concepts under the Bharatiya Nyaya Sanhita (BNS), Consumer Protection Act, RTI, and various Indian State laws.\n\nPlease note: I am an AI, not an Advocate. My responses are for informational purposes only and do not constitute an attorney-client relationship."
+        })
+
+    </script>
+</body>
+</html>
